@@ -119,8 +119,9 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 .tgl{flex:1;padding:8px 0;border-radius:20px;font-size:12px;border:0.5px solid #ddd;color:#888;background:#fff;text-align:center;cursor:pointer;user-select:none;}
 .tgl.active{background:#111;color:#fff;border-color:#111;}
 .time-specific{margin-top:8px;padding:0 2px;display:flex;align-items:center;gap:10px;}
-.time-select{padding:6px 8px;border-radius:8px;border:0.5px solid #ddd;font-size:14px;color:#111;background:#fff;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:center;}
-.text-inp{width:100%;padding:11px 12px;border-radius:8px;border:0.5px solid #ddd;font-size:15px;color:#111;background:#fff;outline:none;resize:none;}
+.time-select{padding:6px 6px;border-radius:8px;border:0.5px solid #ddd;font-size:14px;color:#111;background:#fff;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:center;min-width:52px;}
+.time-sep-colon{font-size:14px;color:#888;font-weight:500;}
+.text-inp{width:100%;padding:11px 12px;border-radius:8px;border:0.5px solid #ddd;font-size:16px;color:#111;background:#fff;outline:none;resize:none;}
 .text-inp:focus{border-color:#aaa;}
 .text-inp::placeholder{color:#bbb;}
 .color-row{display:flex;gap:8px;}
@@ -265,10 +266,19 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
           <div class="tgl" data-val="specific">時間指定</div>
         </div>
         <div class="time-specific" id="time-specific-row" style="display:none;">
-          <select class="time-select" id="sel-start"></select>
+          <select class="time-select" id="sel-start-h"></select>
+          <span class="time-sep-colon">:</span>
+          <select class="time-select" id="sel-start-m"></select>
           <span class="time-sep">から</span>
-          <select class="time-select" id="sel-end"></select>
+          <select class="time-select" id="sel-end-h"></select>
+          <span class="time-sep-colon">:</span>
+          <select class="time-select" id="sel-end-m"></select>
           <span class="time-sep">まで</span>
+        </div>
+        <div class="date-row" id="date-end-row" style="display:none;margin-top:8px;margin-bottom:0;">
+          <span class="time-sep" style="flex-shrink:0;">〜</span>
+          <div class="date-btn" id="add-date-end-btn" style="color:#888;">終了日（任意）</div>
+          <div class="rep-btn" id="btn-clear-date-end" style="display:none;">✕</div>
         </div>
         <div class="divline"></div>
         <input class="text-inp" id="add-title" type="text" placeholder="何の予定？">
@@ -339,9 +349,13 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
         <div class="tgl" data-val="specific">時間指定</div>
       </div>
       <div class="time-specific" id="edit-time-specific" style="display:none;">
-        <select class="time-select" id="edit-sel-start"></select>
+        <select class="time-select" id="edit-sel-start-h"></select>
+        <span class="time-sep-colon">:</span>
+        <select class="time-select" id="edit-sel-start-m"></select>
         <span class="time-sep">から</span>
-        <select class="time-select" id="edit-sel-end"></select>
+        <select class="time-select" id="edit-sel-end-h"></select>
+        <span class="time-sep-colon">:</span>
+        <select class="time-select" id="edit-sel-end-m"></select>
         <span class="time-sep">まで</span>
       </div>
     </div>
@@ -464,14 +478,19 @@ function showTab(name){
 let toastTimer;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2400);}
 
-function timeSlotLabel(ev){
+function timeSlotLabel(ev,role){
+  // role: undefined=通常, 'first'=複数日初日, 'mid'=中間日, 'last'=最終日
+  if(role==='mid')return '終日';
   if(ev.timeSlot==='allday')return '終日';
   if(ev.timeSlot==='morning')return '午前';
   if(ev.timeSlot==='afternoon')return '午後';
   if(ev.timeSlot==='specific'){
+    if(role==='last')return ev.endTime?`〜 ${ev.endTime}`:'終日';
+    if(role==='first')return ev.startTime?`${ev.startTime} 〜`:'終日';
     if(ev.startTime&&ev.endTime)return `${ev.startTime} 〜 ${ev.endTime}`;
     if(ev.startTime)return `${ev.startTime} 〜`;
-    return '時間指定';
+    if(ev.endTime)return `〜 ${ev.endTime}`;
+    return '時間未定';
   }
   return '時間未定';
 }
@@ -499,13 +518,30 @@ function getFilteredEvents(){
 }
 
 // ===== リスト描画 =====
+function expandEvents(events){
+  // 複数日予定を日付ごとに展開する
+  const expanded=[];
+  events.forEach(ev=>{
+    if(!ev.dateEnd||ev.dateEnd<=ev.date){
+      expanded.push({...ev,_role:undefined});
+      return;
+    }
+    let cur=ev.date;
+    while(cur<=ev.dateEnd){
+      const role=cur===ev.date?'first':cur===ev.dateEnd?'last':'mid';
+      expanded.push({...ev,date:cur,_role:role});
+      cur=addDays(cur,1);
+    }
+  });
+  return expanded;
+}
+
 function renderList(){
   const[y,m]=state.listMonth.split('-').map(Number);
   document.getElementById('list-month-label').textContent=`${y}年${m}月`;
 
-  // 全イベントを日付順ソート、今日以降のみ
   const today=todayStr();
-  const events=getFilteredEvents()
+  const events=expandEvents(getFilteredEvents())
     .filter(e=>e.date>=today)
     .sort((a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt);
 
@@ -514,7 +550,6 @@ function renderList(){
     return;
   }
 
-  // 月ごとにグループ化
   const byMonth={};
   events.forEach(e=>{
     const ym=ymOf(e.date);
@@ -545,14 +580,12 @@ function renderList(){
       const w=whoLabel(ev.who);
       html+=`<div class="ecard" data-id="${ev._id}">
         <div class="ebar" style="background:${ev.color||'#43A047'};"></div>
-        <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev)}</div></div>
+        <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev,ev._role)}</div></div>
         <span class="ewho ${w.cls}">${w.label}</span>
       </div>`;
     });
   });
   document.getElementById('list-body').innerHTML=html;
-
-  // 月ナビでその月へスクロール
   scrollToMonth(state.listMonth);
 }
 
@@ -621,17 +654,49 @@ function buildTimeOpts(sel,hasEmpty){
   for(let hr=0;hr<24;hr++)for(let mn=0;mn<60;mn+=15){const v=`${String(hr).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;h+=`<option value="${v}">${v}</option>`;}
   sel.innerHTML=h;
 }
-buildTimeOpts(document.getElementById('sel-start'),false);
-buildTimeOpts(document.getElementById('sel-end'),true);
-buildTimeOpts(document.getElementById('edit-sel-start'),false);
-buildTimeOpts(document.getElementById('edit-sel-end'),true);
+// 時・分セレクト生成
+function buildHourOpts(sel){
+  let h='<option value="" disabled selected>時</option>';
+  for(let i=0;i<24;i++)h+=`<option value="${String(i).padStart(2,'0')}">${i}時</option>`;
+  sel.innerHTML=h;
+}
+function buildMinOpts(sel){
+  let h='<option value="" disabled selected>分</option>';
+  [0,15,30,45].forEach(m=>h+=`<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}分</option>`);
+  sel.innerHTML=h;
+}
+function getNearHour(){
+  const now=new Date();
+  let h=now.getHours();
+  const mn=now.getMinutes();
+  // 現在時刻の次の15分刻みに丸める
+  if(mn<15)return{h:String(h).padStart(2,'0'),m:'00'};
+  if(mn<30)return{h:String(h).padStart(2,'0'),m:'15'};
+  if(mn<45)return{h:String(h).padStart(2,'0'),m:'30'};
+  return{h:String(h).padStart(2,'0'),m:'45'};
+}
+function getEndDefault(startH,startM){
+  // 開始+1時間
+  let h=parseInt(startH)+1;
+  if(h>=24)h=23;
+  return{h:String(h).padStart(2,'0'),m:startM};
+}
+['sel-start-h','sel-end-h','edit-sel-start-h','edit-sel-end-h'].forEach(id=>buildHourOpts(document.getElementById(id)));
+['sel-start-m','sel-end-m','edit-sel-start-m','edit-sel-end-m'].forEach(id=>buildMinOpts(document.getElementById(id)));
+
+// 現在時刻付近をデフォルトに
+const _near=getNearHour();
+document.getElementById('sel-start-h').value=_near.h;
+document.getElementById('sel-start-m').value=_near.m;
+document.getElementById('sel-end-h').value=_near.h;
+document.getElementById('sel-end-m').value=_near.m;
 
 // ===== 日付モーダル =====
 let modalCalMonth=state.listMonth;
 let modalDateTarget='add'; // 'add' or 'edit'
 function openDateModal(target){
   modalDateTarget=target||'add';
-  const src=target==='edit'?state.editData.date:state.add.date;
+  const src=target==='edit'?state.editData.date:target==='add-end'?(state.add.dateEnd||state.add.date):state.add.date;
   const d=parseDateStr(src);
   modalCalMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   renderModalCal();
@@ -662,6 +727,11 @@ document.getElementById('modal-cal-grid').addEventListener('click',e=>{
   if(modalDateTarget==='edit'){
     state.editData.date=d.dataset.date;
     document.getElementById('edit-modal-date-label').textContent=formatDateLabel(d.dataset.date);
+  } else if(modalDateTarget==='add-end'){
+    state.add.dateEnd=d.dataset.date;
+    document.getElementById('add-date-end-btn').textContent=formatDateLabel(d.dataset.date);
+    document.getElementById('add-date-end-btn').style.color='#111';
+    document.getElementById('btn-clear-date-end').style.display='block';
   } else {
     state.add.date=d.dataset.date;
     document.getElementById('add-date-btn').textContent=formatDateLabel(d.dataset.date);
@@ -858,10 +928,65 @@ document.getElementById('tgl-timeslot').addEventListener('click',e=>{
   const t=e.target.closest('.tgl');if(!t)return;
   document.querySelectorAll('#tgl-timeslot .tgl').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');state.add.timeSlot=t.dataset.val;
-  document.getElementById('time-specific-row').style.display=t.dataset.val==='specific'?'flex':'none';
+  const isSpecific=t.dataset.val==='specific';
+  document.getElementById('time-specific-row').style.display=isSpecific?'flex':'none';
+  document.getElementById('date-end-row').style.display=isSpecific?'none':'flex';
+  // 時間指定のときは終了日非表示（開始〜終了時刻で管理）
+  if(isSpecific){state.add.dateEnd='';}
 });
-document.getElementById('sel-start').addEventListener('change',e=>state.add.startTime=e.target.value);
-document.getElementById('sel-end').addEventListener('change',e=>state.add.endTime=e.target.value);
+function getAddStartTime(){
+  const h=document.getElementById('sel-start-h').value;
+  const m=document.getElementById('sel-start-m').value;
+  return(h&&m)?`${h}:${m}`:'';
+}
+function getAddEndTime(){
+  const h=document.getElementById('sel-end-h').value;
+  const m=document.getElementById('sel-end-m').value;
+  return(h&&m)?`${h}:${m}`:'';
+}
+function getEditStartTime(){
+  const h=document.getElementById('edit-sel-start-h').value;
+  const m=document.getElementById('edit-sel-start-m').value;
+  return(h&&m)?`${h}:${m}`:'';
+}
+function getEditEndTime(){
+  const h=document.getElementById('edit-sel-end-h').value;
+  const m=document.getElementById('edit-sel-end-m').value;
+  return(h&&m)?`${h}:${m}`:'';
+}
+
+// 開始時刻変更で終了をデフォルト更新
+['sel-start-h','sel-start-m'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',()=>{
+    const h=document.getElementById('sel-start-h').value;
+    const m=document.getElementById('sel-start-m').value;
+    if(h&&m){
+      const def=getEndDefault(h,m);
+      document.getElementById('sel-end-h').value=def.h;
+      document.getElementById('sel-end-m').value=def.m;
+    }
+  });
+});
+['edit-sel-start-h','edit-sel-start-m'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',()=>{
+    const h=document.getElementById('edit-sel-start-h').value;
+    const m=document.getElementById('edit-sel-start-m').value;
+    if(h&&m){
+      const def=getEndDefault(h,m);
+      document.getElementById('edit-sel-end-h').value=def.h;
+      document.getElementById('edit-sel-end-m').value=def.m;
+    }
+  });
+});
+
+// 終了日ボタン
+document.getElementById('add-date-end-btn').addEventListener('click',()=>openDateModal('add-end'));
+document.getElementById('btn-clear-date-end').addEventListener('click',()=>{
+  state.add.dateEnd='';
+  document.getElementById('add-date-end-btn').textContent='終了日（任意）';
+  document.getElementById('add-date-end-btn').style.color='#888';
+  document.getElementById('btn-clear-date-end').style.display='none';
+});
 document.getElementById('tgl-who').addEventListener('click',e=>{
   const t=e.target.closest('.tgl');if(!t)return;
   document.querySelectorAll('#tgl-who .tgl').forEach(x=>x.classList.remove('active'));
@@ -877,6 +1002,8 @@ document.getElementById('color-row').addEventListener('click',e=>{
 document.getElementById('btn-save').addEventListener('click',async()=>{
   const title=document.getElementById('add-title').value.trim();
   if(!title){showToast('タイトルを入力してください');return;}
+  const startTime=getAddStartTime();
+  const endTime=getAddEndTime();
   const base={
     title,who:state.add.who,timeSlot:state.add.timeSlot,
     color:state.add.color,repeat:state.add.repeat,
@@ -884,8 +1011,11 @@ document.getElementById('btn-save').addEventListener('click',async()=>{
     createdAt:Date.now()
   };
   if(state.add.timeSlot==='specific'){
-    if(state.add.startTime)base.startTime=state.add.startTime;
-    if(state.add.endTime)base.endTime=state.add.endTime;
+    if(startTime)base.startTime=startTime;
+    if(endTime)base.endTime=endTime;
+  }
+  if(state.add.dateEnd&&state.add.dateEnd>state.add.date){
+    base.dateEnd=state.add.dateEnd;
   }
   try{
     if(state.add.repeat==='none'){
@@ -912,6 +1042,11 @@ document.getElementById('btn-save').addEventListener('click',async()=>{
     document.getElementById('time-specific-row').style.display='none';
     document.getElementById('sel-start').value='';document.getElementById('sel-end').value='';
     document.getElementById('rep-weekly').classList.remove('active');document.getElementById('rep-monthly').classList.remove('active');
+    state.add.dateEnd='';
+    document.getElementById('add-date-end-btn').textContent='終了日（任意）';
+    document.getElementById('add-date-end-btn').style.color='#888';
+    document.getElementById('btn-clear-date-end').style.display='none';
+    document.getElementById('date-end-row').style.display='flex';
   }catch(e){showToast('保存に失敗しました');}
 });
 
