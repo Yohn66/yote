@@ -751,8 +751,12 @@ function openEditModal(id){
   // 時間帯
   document.querySelectorAll('#edit-tgl-timeslot .tgl').forEach(t=>t.classList.toggle('active',t.dataset.val===(ev.timeSlot||'unset')));
   document.getElementById('edit-time-specific').style.display=ev.timeSlot==='specific'?'flex':'none';
-  document.getElementById('edit-sel-start').value=ev.startTime||'';
-  document.getElementById('edit-sel-end').value=ev.endTime||'';
+  const[esh,esm]=(ev.startTime||'').split(':');
+  const[eeh,eem]=(ev.endTime||'').split(':');
+  document.getElementById('edit-sel-start-h').value=esh||'';
+  document.getElementById('edit-sel-start-m').value=esm||'';
+  document.getElementById('edit-sel-end-h').value=eeh||'';
+  document.getElementById('edit-sel-end-m').value=eem||'';
   // 誰
   document.querySelectorAll('#edit-tgl-who .tgl').forEach(t=>t.classList.toggle('active',t.dataset.val===(ev.who||'both')));
   // 色
@@ -779,8 +783,6 @@ document.getElementById('edit-color-row').addEventListener('click',e=>{
   document.querySelectorAll('#edit-color-row .cdot').forEach(x=>x.classList.remove('sel'));
   d.classList.add('sel');state.editData.color=d.dataset.color;
 });
-document.getElementById('edit-sel-start').addEventListener('change',e=>state.editData.startTime=e.target.value);
-document.getElementById('edit-sel-end').addEventListener('change',e=>state.editData.endTime=e.target.value);
 
 // 保存ボタン
 document.getElementById('btn-edit-save').addEventListener('click',()=>{
@@ -1040,7 +1042,8 @@ document.getElementById('btn-save').addEventListener('click',async()=>{
     document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
     document.querySelectorAll('#tgl-timeslot .tgl').forEach((t,i)=>t.classList.toggle('active',i===0));
     document.getElementById('time-specific-row').style.display='none';
-    document.getElementById('sel-start').value='';document.getElementById('sel-end').value='';
+    document.getElementById('sel-start-h').value='';document.getElementById('sel-start-m').value='';
+    document.getElementById('sel-end-h').value='';document.getElementById('sel-end-m').value='';
     document.getElementById('rep-weekly').classList.remove('active');document.getElementById('rep-monthly').classList.remove('active');
     state.add.dateEnd='';
     document.getElementById('add-date-end-btn').textContent='終了日（任意）';
