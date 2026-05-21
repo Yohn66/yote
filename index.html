@@ -9,6 +9,11 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#f5f5f0;color:#111;}
 
+/* ローディング */
+#screen-loading{position:fixed;inset:0;background:#f5f5f0;display:flex;align-items:center;justify-content:center;z-index:999;transition:opacity 0.2s;}
+#screen-loading.hide{opacity:0;pointer-events:none;}
+.loading-logo{font-size:32px;font-weight:700;letter-spacing:-1px;color:#111;}
+
 .screen{display:none;flex-direction:column;height:100vh;height:100dvh;background:#fff;}
 .screen.active{display:flex;}
 
@@ -28,9 +33,11 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 
 /* メイン */
 #screen-main{position:relative;}
+/* メイン画面は全画面固定レイアウト */
+#screen-main.active{position:fixed;inset:0;display:flex;flex-direction:column;}
 .main-content{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
 
-/* タブバー（固定） */
+/* タブバー（完全固定） */
 .tab-bar{display:flex;border-top:0.5px solid #eee;background:#fff;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom);}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 0 7px;gap:2px;cursor:pointer;}
 .tab i{font-size:21px;color:#bbb;}
@@ -43,8 +50,8 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 /* 予定タブ */
 #tab-schedule{background:#fff;}
 
-/* ヘッダー（固定） */
-.schedule-header{padding:10px 14px;border-bottom:0.5px solid #eee;display:flex;align-items:center;gap:8px;flex-shrink:0;}
+/* ヘッダー（完全固定） */
+.schedule-header{padding:10px 14px;border-bottom:0.5px solid #eee;display:flex;align-items:center;gap:8px;flex-shrink:0;background:#fff;}
 .filter-btns{display:flex;gap:5px;flex:1;}
 .f-btn{flex:1;padding:6px 0;border-radius:20px;font-size:13px;border:0.5px solid #ddd;background:#fff;color:#888;text-align:center;cursor:pointer;}
 .f-btn.active{background:#111;color:#fff;border-color:#111;font-weight:500;}
@@ -129,6 +136,9 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 .modal-sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;}
 .modal-title{font-size:15px;font-weight:600;color:#111;text-align:center;margin-bottom:12px;}
 
+/* 日付選択モーダルは最前面 */
+#modal-date{z-index:200;}
+
 /* 日付選択モーダル */
 .cal-modal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
 .cal-modal-month{font-size:14px;font-weight:500;}
@@ -171,6 +181,9 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 </style>
 </head>
 <body>
+
+<!-- ローディング画面 -->
+<div id="screen-loading"><div class="loading-logo">Yote.</div></div>
 
 <!-- トップ画面 -->
 <div class="screen active" id="screen-top">
@@ -938,6 +951,11 @@ document.getElementById('btn-create').addEventListener('click',async()=>{
 });
 
 // ===== 起動 =====
+function hideLoading(){
+  const l=document.getElementById('screen-loading');
+  l.classList.add('hide');
+  setTimeout(()=>l.style.display='none',250);
+}
 async function init(){
   document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
   const hash=location.hash.replace('#','');
@@ -947,7 +965,7 @@ async function init(){
       if(snap.exists()){
         state.roomId=hash;state.meta=snap.val();
         localStorage.setItem('yote_room',hash);
-        updateNameBtns();subscribeRoom(hash);showScreen('screen-main');return;
+        updateNameBtns();subscribeRoom(hash);showScreen('screen-main');hideLoading();return;
       }
     }catch(e){console.error(e);}
   }
@@ -957,10 +975,11 @@ async function init(){
       const snap=await get(ref(db,`rooms/${saved}/meta`));
       if(snap.exists()){
         state.roomId=saved;state.meta=snap.val();
-        location.hash=saved;updateNameBtns();subscribeRoom(saved);showScreen('screen-main');return;
+        location.hash=saved;updateNameBtns();subscribeRoom(saved);showScreen('screen-main');hideLoading();return;
       }
     }catch(e){console.error(e);}
   }
+  hideLoading();
   showScreen('screen-top');
 }
 init();
