@@ -736,14 +736,6 @@ function getEndDefault(startH){
 const _near=getNearHour();
 document.getElementById('sel-start-h').value=_near.h;
 document.getElementById('sel-end-h').value=_near.h;
-function buildMinOpts(sel){let h='<option value="" disabled selected>分</option>';[0,15,30,45].forEach(m=>h+=`<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}分</option>`);sel.innerHTML=h;}
-function getNearHour(){const now=new Date();const h=now.getHours();const mn=now.getMinutes();if(mn<15)return{h:String(h).padStart(2,'0'),m:'00'};if(mn<30)return{h:String(h).padStart(2,'0'),m:'15'};if(mn<45)return{h:String(h).padStart(2,'0'),m:'30'};return{h:String(h).padStart(2,'0'),m:'45'};}
-function getEndDefault(startH,startM){let h=parseInt(startH)+1;if(h>=24)h=23;return{h:String(h).padStart(2,'0'),m:startM};}
-['sel-start-h','sel-end-h','edit-sel-start-h','edit-sel-end-h'].forEach(id=>buildHourOpts(document.getElementById(id)));
-['sel-start-m','sel-end-m','edit-sel-start-m','edit-sel-end-m'].forEach(id=>buildMinOpts(document.getElementById(id)));
-const _near=getNearHour();
-document.getElementById('sel-start-h').value=_near.h;document.getElementById('sel-start-m').value=_near.m;
-document.getElementById('sel-end-h').value=_near.h;document.getElementById('sel-end-m').value=_near.m;
 
 // ===== 日付モーダル =====
 let modalCalMonth=state.listMonth;
