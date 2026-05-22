@@ -621,50 +621,43 @@ function renderList(){
   const[y,m]=state.listMonth.split('-').map(Number);
   document.getElementById('list-month-label').textContent=`${y}年${m}月`;
   const today=todayStr();
+  const monthStart=`${String(y)}-${String(m).padStart(2,'0')}-01`;
+  const monthEnd=`${String(y)}-${String(m).padStart(2,'0')}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
   const events=expandEvents(getFilteredEvents())
-    .filter(e=>e.date>=today)
+    .filter(e=>e.date>=monthStart&&e.date<=monthEnd)
     .sort((a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt);
-
   if(events.length===0){
     document.getElementById('list-body').innerHTML='<div class="empty-msg">予定はありません</div>';
     return;
   }
-  const byMonth={};
-  events.forEach(e=>{const ym=ymOf(e.date);if(!byMonth[ym])byMonth[ym]=[];byMonth[ym].push(e);});
   let html='';let lastDate='';
-  const months=Object.keys(byMonth).sort();
-  months.forEach((ym,mi)=>{
-    if(mi>0){const[yy,mm]=ym.split('-').map(Number);html+=`<div class="month-divider" data-ym="${ym}">${yy}年${mm}月</div>`;}
-    byMonth[ym].forEach(ev=>{
-      if(ev.date!==lastDate){
-        lastDate=ev.date;
-        const d=parseDateStr(ev.date);const dow=d.getDay();const hol=isHoliday(d);const isToday=ev.date===today;
-        let cls='date-hd';
-        if(isToday)cls+=' today-hd';else if(hol)cls+=' holiday-hd';else if(dow===0)cls+=' sun-hd';else if(dow===6)cls+=' sat-hd';
-        const holTxt=hol?'・祝':'';
-        html+=`<div class="${cls}" data-date="${ev.date}">${isToday?'今日 ':''}${d.getMonth()+1}/${d.getDate()}（${DOW_JA[dow]}${holTxt}）</div>`;
-      }
-      const w=whoLabel(ev.who);
-      const clr=colorOf(ev.who);
-      html+=`<div class="ecard" data-id="${ev._id}">
-        <div class="ebar" style="background:${clr};"></div>
-        <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev,ev._role)}</div></div>
-        <span class="ewho ${w.cls}">${w.label}</span>
-      </div>`;
-    });
+  events.forEach(ev=>{
+    if(ev.date!==lastDate){
+      lastDate=ev.date;
+      const d=parseDateStr(ev.date);const dow=d.getDay();const hol=isHoliday(d);const isToday=ev.date===today;
+      let cls='date-hd';
+      if(isToday)cls+=' today-hd';else if(hol)cls+=' holiday-hd';else if(dow===0)cls+=' sun-hd';else if(dow===6)cls+=' sat-hd';
+      const holTxt=hol?'・祝':'';
+      html+=`<div class="${cls}" data-date="${ev.date}">${isToday?'今日 ':''}${d.getMonth()+1}/${d.getDate()}（${DOW_JA[dow]}${holTxt}）</div>`;
+    }
+    const w=whoLabel(ev.who);const clr=colorOf(ev.who);
+    html+=`<div class="ecard" data-id="${ev._id}">
+      <div class="ebar" style="background:${clr};"></div>
+      <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev,ev._role)}</div></div>
+      <span class="ewho ${w.cls}">${w.label}</span>
+    </div>`;
   });
   document.getElementById('list-body').innerHTML=html;
-  scrollToMonth(state.listMonth);
+  // 当月なら今日にスクロール、それ以外は先頭
+  const nowYM=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
+  if(state.listMonth===nowYM){
+    const todayEl=document.querySelector(`#list-body [data-date="${today}"]`);
+    if(todayEl)todayEl.scrollIntoView({block:'start'});
+  } else {
+    document.getElementById('list-body').scrollTop=0;
+  }
 }
 
-function scrollToMonth(ym){
-  const container=document.getElementById('list-body');
-  const divider=container.querySelector(`[data-ym="${ym}"]`);
-  if(divider){divider.scrollIntoView({block:'start'});return;}
-  const[y,m]=ym.split('-').map(Number);
-  const allDateHds=container.querySelectorAll('[data-date]');
-  for(const el of allDateHds){const d=parseDateStr(el.dataset.date);if(d.getFullYear()===y&&d.getMonth()+1===m){el.scrollIntoView({block:'start'});return;}}
-}
 
 // ===== カレンダー描画 =====
 function renderCalendar(){
@@ -980,18 +973,24 @@ document.getElementById('btn-save').addEventListener('click',async()=>{
       await Promise.all(tasks);
     }
     showToast('保存しました ✓');
-    document.getElementById('add-title').value='';document.getElementById('add-memo').value='';
-    state.add.date=todayStr();state.add.timeSlot='unset';state.add.repeat='none';
-    document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
-    document.querySelectorAll('#tgl-timeslot .tgl-plain').forEach((t,i)=>t.classList.toggle('active',i===0));
-    document.getElementById('time-specific-row').style.display='none';
-    document.getElementById('sel-start-h').value='';document.getElementById('sel-start-m').value='';
-    document.getElementById('sel-end-h').value='';document.getElementById('sel-end-m').value='';
-    document.getElementById('rep-weekly').classList.remove('active');document.getElementById('rep-monthly').classList.remove('active');
-    state.add.dateEnd='';
-    document.getElementById('add-date-end-btn').textContent='終了日（任意）';document.getElementById('add-date-end-btn').style.color='#888';
-    document.getElementById('btn-clear-date-end').style.display='none';
-    document.getElementById('date-end-row').style.display='flex';
+    // タイトル・メモのみリセット。日付・時間帯・誰・繰り返しは維持
+    document.getElementById('add-title').value='';
+    document.getElementById('add-memo').value='';
+    // 予定タブに遷移して保存した日付を表示
+    const savedDate=state.add.date;
+    const savedYM=savedDate.slice(0,7);
+    state.listMonth=savedYM;
+    state.calMonth=savedYM;
+    state.calSelectedDate=savedDate;
+    showTab('schedule');
+    if(state.view==='list'){
+      document.getElementById('view-list').style.display='flex';
+      document.getElementById('view-calendar').style.display='none';
+    } else {
+      document.getElementById('view-list').style.display='none';
+      document.getElementById('view-calendar').style.display='flex';
+      renderCalendar();
+    }
   }catch(e){showToast('保存に失敗しました');}
 });
 
