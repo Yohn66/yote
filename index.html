@@ -317,20 +317,21 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
           <div class="tgl-plain" data-val="afternoon">午後</div>
           <div class="tgl-plain" data-val="specific">時間</div>
         </div>
-        <div class="time-specific" id="time-specific-row" style="display:none;">
-          <select class="time-select" id="sel-start-h"></select>
-          <span class="time-sep-colon">:</span>
-          <select class="time-select" id="sel-start-m"></select>
-          <span class="time-sep">から</span>
-          <select class="time-select" id="sel-end-h"></select>
-          <span class="time-sep-colon">:</span>
-          <select class="time-select" id="sel-end-m"></select>
-          <span class="time-sep">まで</span>
-        </div>
-        <div class="date-row" id="date-end-row" style="display:none;margin-top:8px;margin-bottom:0;">
-          <span class="time-sep" style="flex-shrink:0;">〜</span>
-          <div class="date-btn" id="add-date-end-btn" style="color:#888;">終了日（任意）</div>
-          <div class="rep-btn" id="btn-clear-date-end" style="display:none;">✕</div>
+        <div id="time-specific-row" style="display:none;">
+          <div class="time-specific">
+            <div class="date-btn time-date-btn" id="add-date-start-btn" style="flex-shrink:0;width:auto;padding:6px 10px;font-size:13px;"></div>
+            <select class="time-select" id="sel-start-h"></select>
+            <span class="time-sep-colon">:</span>
+            <select class="time-select" id="sel-start-m"></select>
+            <span class="time-sep">から</span>
+          </div>
+          <div class="time-specific" style="margin-top:6px;">
+            <div class="date-btn time-date-btn" id="add-date-end-btn" style="flex-shrink:0;width:auto;padding:6px 10px;font-size:13px;"></div>
+            <select class="time-select" id="sel-end-h"></select>
+            <span class="time-sep-colon">:</span>
+            <select class="time-select" id="sel-end-m"></select>
+            <span class="time-sep">まで</span>
+          </div>
         </div>
         <div class="divline"></div>
         <input class="text-inp" id="add-title" type="text" placeholder="何の予定？">
@@ -508,6 +509,7 @@ function ymOf(dateStr){return dateStr.slice(0,7);}
 function addDays(dateStr,n){const d=parseDateStr(dateStr);d.setDate(d.getDate()+n);return toDateStr(d);}
 function addMonths(dateStr,n){const d=parseDateStr(dateStr);d.setMonth(d.getMonth()+n);return toDateStr(d);}
 function formatDateLabel(s){const d=parseDateStr(s);return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${DOW_JA[d.getDay()]}）`;}
+function formatDateShort(s){const d=parseDateStr(s);return `${d.getMonth()+1}/${d.getDate()}（${DOW_JA[d.getDay()]}）`;}
 
 const _now=new Date();
 const state={
@@ -651,8 +653,12 @@ function renderList(){
   // 当月なら今日にスクロール、それ以外は先頭
   const nowYM=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
   if(state.listMonth===nowYM){
-    const todayEl=document.querySelector(`#list-body [data-date="${today}"]`);
-    if(todayEl)todayEl.scrollIntoView({block:'start'});
+    // 今日以降で最初の予定カードか日付ヘッダーを探す
+    const allHds=document.querySelectorAll('#list-body [data-date]');
+    let scrollTarget=null;
+    allHds.forEach(el=>{if(!scrollTarget&&el.dataset.date>=today)scrollTarget=el;});
+    if(scrollTarget)scrollTarget.scrollIntoView({block:'start'});
+    else document.getElementById('list-body').scrollTop=0;
   } else {
     document.getElementById('list-body').scrollTop=0;
   }
@@ -708,27 +714,21 @@ function buildHourOpts(sel){
   sel.innerHTML=h;
 }
 function buildMinOpts(sel){
-  // 分は00固定デフォルト・選択肢は15分刻み＋00
   let h='';
-  [0,15,30,45].forEach(m=>h+=`<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}分</option>`);
+  for(let m=0;m<60;m+=5)h+=`<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}分</option>`;
   sel.innerHTML=h;
-  sel.value='00'; // デフォルト00
+  sel.value='00';
 }
 function getNearHour(){
   const now=new Date();
-  const h=now.getHours();
-  return{h:String(h).padStart(2,'0')};
+  return{h:String(now.getHours()).padStart(2,'0')};
 }
 function getEndDefault(startH){
-  let h=parseInt(startH)+1;
-  if(h>=24)h=23;
-  return{h:String(h).padStart(2,'0')};
+  return{h:startH};
 }
+
 ['sel-start-h','sel-end-h','edit-sel-start-h','edit-sel-end-h'].forEach(id=>buildHourOpts(document.getElementById(id)));
 ['sel-start-m','sel-end-m','edit-sel-start-m','edit-sel-end-m'].forEach(id=>buildMinOpts(document.getElementById(id)));
-const _near=getNearHour();
-document.getElementById('sel-start-h').value=_near.h;
-document.getElementById('sel-end-h').value=_near.h;
 
 // ===== 日付モーダル =====
 let modalCalMonth=state.listMonth;
@@ -773,12 +773,14 @@ document.getElementById('modal-cal-grid').addEventListener('click',e=>{
     document.getElementById('edit-modal-date-label').textContent=formatDateLabel(d.dataset.date);
   } else if(modalDateTarget==='add-end'){
     state.add.dateEnd=d.dataset.date;
-    document.getElementById('add-date-end-btn').textContent=formatDateLabel(d.dataset.date);
-    document.getElementById('add-date-end-btn').style.color='#111';
-    document.getElementById('btn-clear-date-end').style.display='block';
-  } else {
+    document.getElementById('add-date-end-btn').textContent=formatDateShort(d.dataset.date);
+  } else if(modalDateTarget==='add'){
     state.add.date=d.dataset.date;
-    document.getElementById('add-date-btn').textContent=formatDateLabel(d.dataset.date);
+    document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
+    if(state.add.timeSlot==='specific'){
+      document.getElementById('add-date-start-btn').textContent=formatDateShort(state.add.date);
+    }
+  } else {
   }
   document.getElementById('modal-date').classList.remove('open');
 });
@@ -914,6 +916,8 @@ document.getElementById('tab-bar').addEventListener('click',e=>{
 
 // ===== 追加タブ =====
 document.getElementById('add-date-btn').addEventListener('click',()=>openDateModal('add'));
+document.getElementById('add-date-start-btn').addEventListener('click',()=>openDateModal('add'));
+document.getElementById('add-date-end-btn').addEventListener('click',()=>openDateModal('add-end'));
 document.getElementById('rep-weekly').addEventListener('click',()=>{
   const a=document.getElementById('rep-weekly').classList.toggle('active');
   if(a){document.getElementById('rep-monthly').classList.remove('active');state.add.repeat='weekly';}else state.add.repeat='none';
@@ -927,9 +931,19 @@ document.getElementById('tgl-timeslot').addEventListener('click',e=>{
   document.querySelectorAll('#tgl-timeslot .tgl-plain').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');state.add.timeSlot=t.dataset.val;
   const isSpecific=t.dataset.val==='specific';
-  document.getElementById('time-specific-row').style.display=isSpecific?'flex':'none';
+  document.getElementById('time-specific-row').style.display=isSpecific?'block':'none';
   document.getElementById('date-end-row').style.display=isSpecific?'none':'flex';
-  if(isSpecific)state.add.dateEnd='';
+  if(isSpecific){
+    // 開始日・終了日を現在の日付でセット
+    const nearH=getNearHour().h;
+    document.getElementById('add-date-start-btn').textContent=formatDateShort(state.add.date);
+    document.getElementById('add-date-end-btn').textContent=formatDateShort(state.add.date);
+    state.add.dateEnd=state.add.date;
+    document.getElementById('sel-start-h').value=nearH;
+    document.getElementById('sel-start-m').value='00';
+    document.getElementById('sel-end-h').value=nearH;
+    document.getElementById('sel-end-m').value='00';
+  }
 });
 document.getElementById('tgl-who').addEventListener('click',e=>{
   const t=e.target.closest('.tgl');if(!t)return;
@@ -949,12 +963,7 @@ document.getElementById('tgl-who').addEventListener('click',e=>{
   });
 });
 document.getElementById('add-date-end-btn').addEventListener('click',()=>openDateModal('add-end'));
-document.getElementById('btn-clear-date-end').addEventListener('click',()=>{
-  state.add.dateEnd='';
-  document.getElementById('add-date-end-btn').textContent='終了日（任意）';
-  document.getElementById('add-date-end-btn').style.color='#888';
-  document.getElementById('btn-clear-date-end').style.display='none';
-});
+
 
 // ===== 保存 =====
 document.getElementById('btn-save').addEventListener('click',async()=>{
