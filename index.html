@@ -627,7 +627,25 @@ function renderList(){
   const monthEnd=`${String(y)}-${String(m).padStart(2,'0')}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
   const events=expandEvents(getFilteredEvents())
     .filter(e=>e.date>=monthStart&&e.date<=monthEnd)
-    .sort((a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt);
+    .sort((a,b)=>{
+      const dateCmp=a.date.localeCompare(b.date);
+      if(dateCmp!==0)return dateCmp;
+      const slotMin=ev=>{
+        if(ev.timeSlot==='allday')return -1;
+        if(ev.timeSlot==='morning')return 719;
+        if(ev.timeSlot==='afternoon')return 1439;
+        if(ev.timeSlot==='specific'&&ev.startTime){
+          const[h,m]=ev.startTime.split(':').map(Number);return h*60+m;
+        }
+        return 99999;
+      };
+      const startCmp=slotMin(a)-slotMin(b);
+      if(startCmp!==0)return startCmp;
+      const toMin=t=>t?(parseInt(t.split(':')[0])*60+parseInt(t.split(':')[1])):99999;
+      const endCmp=toMin(a.endTime)-toMin(b.endTime);
+      if(endCmp!==0)return endCmp;
+      return a.createdAt-b.createdAt;
+    });
   if(events.length===0){
     document.getElementById('list-body').innerHTML='<div class="empty-msg">予定はありません</div>';
     return;
