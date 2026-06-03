@@ -932,7 +932,6 @@ document.getElementById('tgl-timeslot').addEventListener('click',e=>{
   t.classList.add('active');state.add.timeSlot=t.dataset.val;
   const isSpecific=t.dataset.val==='specific';
   document.getElementById('time-specific-row').style.display=isSpecific?'block':'none';
-  document.getElementById('date-end-row').style.display=isSpecific?'none':'flex';
   if(isSpecific){
     // 開始日・終了日を現在の日付でセット
     const nearH=getNearHour().h;
@@ -962,7 +961,6 @@ document.getElementById('tgl-who').addEventListener('click',e=>{
     if(h){const def=getEndDefault(h);document.getElementById('edit-sel-end-h').value=def.h;}
   });
 });
-document.getElementById('add-date-end-btn').addEventListener('click',()=>openDateModal('add-end'));
 
 
 // ===== 保存 =====
