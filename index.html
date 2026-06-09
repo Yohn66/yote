@@ -196,6 +196,12 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 /* トースト */
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:#333;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;opacity:0;transition:all 0.2s;pointer-events:none;z-index:200;white-space:nowrap;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* スワイプ削除 */
+.ecard-wrap{position:relative;overflow:hidden;margin:4px 12px;border-radius:12px;}
+.ecard-wrap .ecard{margin:0;border-radius:12px;}
+.swipe-del-btn{position:absolute;right:0;top:0;bottom:0;width:72px;background:#e74c3c;color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:0 12px 12px 0;transform:translateX(100%);transition:transform 0.2s;}
+.ecard-wrap.swiped .swipe-del-btn{transform:translateX(0);}
 </style>
 </head>
 <body>
@@ -521,7 +527,7 @@ const state={
   listMonth:`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`,
   calMonth:`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`,
   calSelectedDate:todayStr(),
-  add:{date:todayStr(),timeSlot:"unset",startTime:"",endTime:"",title:"",who:"both",memo:"",repeat:"none"},
+  add:{date:todayStr(),timeSlot:"unset",startTime:"",endTime:"",title:"",who:"both",memo:"",repeat:"none",endTimeManuallySet:false},
   editId:null,
   editData:null,
   scopeMode:null,
@@ -546,6 +552,86 @@ function showTab(name){
 }
 let toastTimer;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2400);}
+
+// ===== スワイプ削除管理 =====
+let pendingDeletes={};// {id: {timer, data}}
+let swipedCard=null;
+
+function setupSwipe(wrap){
+  let startX=0,startY=0,moved=false,isHoriz=false;
+  const card=wrap.querySelector('.ecard');
+  card.addEventListener('touchstart',e=>{
+    startX=e.touches[0].clientX;startY=e.touches[0].clientY;moved=false;isHoriz=false;
+    // 他のスワイプを閉じる
+    if(swipedCard&&swipedCard!==wrap){swipedCard.classList.remove('swiped');swipedCard=null;}
+  },{passive:true});
+  card.addEventListener('touchmove',e=>{
+    const dx=e.touches[0].clientX-startX,dy=e.touches[0].clientY-startY;
+    if(!moved){isHoriz=Math.abs(dx)>Math.abs(dy);moved=true;}
+    if(isHoriz)e.preventDefault();
+  },{passive:false});
+  card.addEventListener('touchend',e=>{
+    if(!isHoriz)return;
+    const dx=e.changedTouches[0].clientX-startX;
+    if(dx<-40){wrap.classList.add('swiped');swipedCard=wrap;}
+    else{wrap.classList.remove('swiped');if(swipedCard===wrap)swipedCard=null;}
+  });
+  // 削除ボタン
+  wrap.querySelector('.swipe-del-btn').addEventListener('click',()=>{
+    const id=wrap.dataset.id;
+    wrap.classList.remove('swiped');swipedCard=null;
+    const ev=state.events[id];
+    if(ev&&ev.repeatGroupId){
+      // 繰り返し予定はスコープ選択へ
+      state.editId=id;state.editData={...ev};
+      state.scopeMode='delete';
+      document.getElementById('scope-title').textContent='削除する範囲を選択';
+      document.getElementById('modal-scope').classList.add('open');
+    } else {
+      doSwipeDelete(id,wrap);
+    }
+  });
+}
+
+function doSwipeDelete(id,wrap){
+  // 前の保留があれば即確定
+  if(pendingDeletes[id])return;// 同じIDの重複防止
+  Object.keys(pendingDeletes).forEach(pid=>{
+    clearTimeout(pendingDeletes[pid].timer);
+    remove(ref(db,`rooms/${state.roomId}/events/${pid}`));
+    delete pendingDeletes[pid];
+  });
+  // 要素を視覚的に消す
+  wrap.style.transition='opacity 0.15s';wrap.style.opacity='0.3';
+  const evData={...state.events[id]};
+  // 4秒後に実際に削除
+  const timer=setTimeout(async()=>{
+    if(pendingDeletes[id]){
+      await remove(ref(db,`rooms/${state.roomId}/events/${id}`));
+      delete pendingDeletes[id];
+    }
+  },4000);
+  pendingDeletes[id]={timer,data:evData,wrap};
+  // トースト（取り消しボタン付き）
+  showToastWithUndo('削除しました',()=>{
+    if(pendingDeletes[id]){
+      clearTimeout(pendingDeletes[id].timer);
+      delete pendingDeletes[id];
+      wrap.style.opacity='1';
+    }
+  });
+}
+
+function showToastWithUndo(msg,onUndo){
+  const t=document.getElementById('toast');
+  t.innerHTML=`${msg} <span id="toast-undo" style="margin-left:10px;text-decoration:underline;cursor:pointer;font-weight:600;">取り消す</span>`;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3800);
+  document.getElementById('toast-undo').addEventListener('click',()=>{
+    t.classList.remove('show');onUndo();
+  });
+}
 
 function timeSlotLabel(ev,role){
   if(role==='mid')return '終日';
@@ -651,23 +737,34 @@ function renderList(){
     return;
   }
   let html='';let lastDate='';
+  // 日付ごとにグループ化してソート
+  const byDate={};
   events.forEach(ev=>{
-    if(ev.date!==lastDate){
-      lastDate=ev.date;
-      const d=parseDateStr(ev.date);const dow=d.getDay();const hol=isHoliday(d);const isToday=ev.date===today;
-      let cls='date-hd';
-      if(isToday)cls+=' today-hd';else if(hol)cls+=' holiday-hd';else if(dow===0)cls+=' sun-hd';else if(dow===6)cls+=' sat-hd';
-      const holTxt=hol?'・祝':'';
-      html+=`<div class="${cls}" data-date="${ev.date}">${isToday?'今日 ':''}${d.getMonth()+1}/${d.getDate()}（${DOW_JA[dow]}${holTxt}）</div>`;
-    }
-    const w=whoLabel(ev.who);const clr=colorOf(ev.who);
-    html+=`<div class="ecard" data-id="${ev._id}">
-      <div class="ebar" style="background:${clr};"></div>
-      <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev,ev._role)}</div></div>
-      <span class="ewho ${w.cls}">${w.label}</span>
-    </div>`;
+    if(!byDate[ev.date])byDate[ev.date]=[];
+    byDate[ev.date].push(ev);
+  });
+  const sortedDates=Object.keys(byDate).sort();
+  sortedDates.forEach(dateStr=>{
+    const d=parseDateStr(dateStr);const dow=d.getDay();const hol=isHoliday(d);const isToday=dateStr===today;
+    let cls='date-hd';
+    if(isToday)cls+=' today-hd';else if(hol)cls+=' holiday-hd';else if(dow===0)cls+=' sun-hd';else if(dow===6)cls+=' sat-hd';
+    const holTxt=hol?'・祝':'';
+    html+=`<div class="${cls}" data-date="${dateStr}">${isToday?'今日 ':''}${d.getMonth()+1}/${d.getDate()}（${DOW_JA[dow]}${holTxt}）</div>`;
+    sortEvents(byDate[dateStr]).forEach(ev=>{
+      const w=whoLabel(ev.who);const clr=colorOf(ev.who);
+      const repeatLabel=ev.repeat==='weekly'?'(毎週)':ev.repeat==='monthly'?'(毎月)':'';
+      html+=`<div class="ecard-wrap" data-id="${ev._id}">
+        <div class="ecard" data-id="${ev._id}">
+          <div class="ebar" style="background:${clr};"></div>
+          <div class="ebody"><div class="etitle">${repeatLabel}${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev,ev._role)}</div></div>
+          <span class="ewho ${w.cls}">${w.label}</span>
+        </div>
+        <div class="swipe-del-btn">削除</div>
+      </div>`;
+    });
   });
   document.getElementById('list-body').innerHTML=html+'<div style="height:60vh;"></div>';
+  document.querySelectorAll('#list-body .ecard-wrap').forEach(wrap=>setupSwipe(wrap));
   // 当月なら今日にスクロール、それ以外は先頭
   const nowYM=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
   if(state.listMonth===nowYM){
@@ -705,20 +802,41 @@ function renderCalendar(){
   document.getElementById('cal-days').innerHTML=html;
   renderCalDetail(state.calSelectedDate);
 }
+function sortEvents(evs){
+  function sortKey(ev){
+    const slot=ev.timeSlot||'unset';
+    if(slot==='allday')return '0_';
+    if(slot==='specific'){
+      const t=ev.startTime||'';
+      return '1_'+(t?t.replace(':',''):'9999');
+    }
+    if(slot==='morning')return '2_';
+    if(slot==='afternoon')return '3_';
+    return '4_';
+  }
+  return [...evs].sort((a,b)=>{
+    const ka=sortKey(a),kb=sortKey(b);
+    if(ka!==kb)return ka<kb?-1:1;
+    if(a.createdAt!==b.createdAt)return (a.createdAt||0)-(b.createdAt||0);
+    return 0;
+  });
+}
+
 function renderCalDetail(dateStr){
   const detail=document.getElementById('cal-detail');
   if(!dateStr){detail.innerHTML='';return;}
   const d=parseDateStr(dateStr);const dow=d.getDay();const hol=isHoliday(d);
   let cls='cal-detail-hd';
   if(dateStr===todayStr())cls+=' today-hd';else if(hol||dow===0)cls+=' holiday-hd';else if(dow===6)cls+=' sat-hd';
-  const evs=getFilteredEvents().filter(e=>e.date===dateStr);
+  const evs=sortEvents(getFilteredEvents().filter(e=>e.date===dateStr));
   let html=`<div class="${cls}">${d.getMonth()+1}/${d.getDate()}（${DOW_JA[dow]}${hol?'・祝':''}）の予定</div>`;
   if(!evs.length)html+=`<div class="empty-msg" style="padding:16px 0;">予定はありません</div>`;
   else evs.forEach(ev=>{
     const w=whoLabel(ev.who);const clr=colorOf(ev.who);
+    const repeatLabel=ev.repeat==='weekly'?'(毎週)':ev.repeat==='monthly'?'(毎月)':'';
     html+=`<div class="ecard" data-id="${ev._id}">
       <div class="ebar" style="background:${clr};"></div>
-      <div class="ebody"><div class="etitle">${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev)}</div></div>
+      <div class="ebody"><div class="etitle">${repeatLabel}${ev.title||''}</div><div class="emeta">${timeSlotLabel(ev)}</div></div>
       <span class="ewho ${w.cls}">${w.label}</span>
     </div>`;
   });
@@ -790,13 +908,28 @@ document.getElementById('modal-cal-grid').addEventListener('click',e=>{
     state.editData.date=d.dataset.date;
     document.getElementById('edit-modal-date-label').textContent=formatDateLabel(d.dataset.date);
   } else if(modalDateTarget==='add-end'){
-    state.add.dateEnd=d.dataset.date;
-    document.getElementById('add-date-end-btn').textContent=formatDateShort(d.dataset.date);
-  } else if(modalDateTarget==='add'){
+    let chosen=d.dataset.date;
+    // 開始日より前なら開始日に戻す
+    if(chosen<state.add.date)chosen=state.add.date;
+    state.add.dateEnd=chosen;
+    document.getElementById('add-date-end-btn').textContent=formatDateShort(chosen);
+  } else if(modalDateTarget==='add-start'){
+    // 開始日変更 → 一番上の日付も同期、終了日も同日に
     state.add.date=d.dataset.date;
+    state.add.dateEnd=d.dataset.date;
+    document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
+    document.getElementById('add-date-start-btn').textContent=formatDateShort(state.add.date);
+    document.getElementById('add-date-end-btn').textContent=formatDateShort(state.add.date);
+    state.add.endTimeManuallySet=false;
+  } else if(modalDateTarget==='add'){
+    // 一番上の日付変更 → 開始日も同期、終了日も同日に
+    state.add.date=d.dataset.date;
+    state.add.dateEnd=d.dataset.date;
     document.getElementById('add-date-btn').textContent=formatDateLabel(state.add.date);
     if(state.add.timeSlot==='specific'){
       document.getElementById('add-date-start-btn').textContent=formatDateShort(state.add.date);
+      document.getElementById('add-date-end-btn').textContent=formatDateShort(state.add.date);
+      state.add.endTimeManuallySet=false;
     }
   } else {
   }
@@ -888,7 +1021,15 @@ async function doDelete(scope){
 }
 
 function attachCardListeners(container){
-  container.addEventListener('click',e=>{const card=e.target.closest('.ecard');if(!card||!card.dataset.id)return;openEditModal(card.dataset.id);});
+  container.addEventListener('click',e=>{
+    // スワイプ削除ボタンは除外
+    if(e.target.closest('.swipe-del-btn'))return;
+    const card=e.target.closest('.ecard');if(!card||!card.dataset.id)return;
+    // スワイプ中は編集モーダルを開かない
+    const wrap=card.closest('.ecard-wrap');
+    if(wrap&&wrap.classList.contains('swiped')){wrap.classList.remove('swiped');swipedCard=null;return;}
+    openEditModal(card.dataset.id);
+  });
 }
 attachCardListeners(document.getElementById('list-body'));
 attachCardListeners(document.getElementById('cal-detail'));
@@ -934,7 +1075,7 @@ document.getElementById('tab-bar').addEventListener('click',e=>{
 
 // ===== 追加タブ =====
 document.getElementById('add-date-btn').addEventListener('click',()=>openDateModal('add'));
-document.getElementById('add-date-start-btn').addEventListener('click',()=>openDateModal('add'));
+document.getElementById('add-date-start-btn').addEventListener('click',()=>openDateModal('add-start'));
 document.getElementById('add-date-end-btn').addEventListener('click',()=>openDateModal('add-end'));
 document.getElementById('rep-weekly').addEventListener('click',()=>{
   const a=document.getElementById('rep-weekly').classList.toggle('active');
@@ -951,8 +1092,8 @@ document.getElementById('tgl-timeslot').addEventListener('click',e=>{
   const isSpecific=t.dataset.val==='specific';
   document.getElementById('time-specific-row').style.display=isSpecific?'block':'none';
   if(isSpecific){
-    // 開始日・終了日を現在の日付でセット
     const nearH=getNearHour().h;
+    state.add.endTimeManuallySet=false;
     document.getElementById('add-date-start-btn').textContent=formatDateShort(state.add.date);
     document.getElementById('add-date-end-btn').textContent=formatDateShort(state.add.date);
     state.add.dateEnd=state.add.date;
@@ -969,8 +1110,15 @@ document.getElementById('tgl-who').addEventListener('click',e=>{
 });
 ['sel-start-h','sel-start-m'].forEach(id=>{
   document.getElementById(id).addEventListener('change',()=>{
-    const h=document.getElementById('sel-start-h').value;
-    if(h){const def=getEndDefault(h);document.getElementById('sel-end-h').value=def.h;}
+    if(!state.add.endTimeManuallySet){
+      document.getElementById('sel-end-h').value=document.getElementById('sel-start-h').value;
+      document.getElementById('sel-end-m').value=document.getElementById('sel-start-m').value;
+    }
+  });
+});
+['sel-end-h','sel-end-m'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',()=>{
+    state.add.endTimeManuallySet=true;
   });
 });
 ['edit-sel-start-h','edit-sel-start-m'].forEach(id=>{
