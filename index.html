@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Yote.</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Yote.">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#f5f5f0">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -207,7 +212,31 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Ne
 <body>
 
 <!-- ローディング -->
-<div id="screen-loading"><div class="loading-logo">Yote.</div></div>
+<div id="screen-loading">
+  <svg width="120" height="120" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <clipPath id="ic"><rect width="200" height="200" rx="40"/></clipPath>
+      <clipPath id="icL"><rect x="0" y="0" width="100" height="200"/></clipPath>
+      <clipPath id="icR"><rect x="100" y="0" width="100" height="200"/></clipPath>
+    </defs>
+    <rect width="200" height="200" rx="40" fill="#37474F"/>
+    <g clip-path="url(#ic)">
+      <rect width="100" height="200" fill="#FFB300"/>
+      <rect x="100" width="100" height="200" fill="#37474F"/>
+      <circle cx="50" cy="90" r="34" fill="white"/>
+      <circle cx="150" cy="90" r="30" fill="white"/>
+      <circle cx="165" cy="83" r="26" fill="#37474F"/>
+      <text x="100" y="168" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif"
+        font-size="38" font-weight="700" fill="#37474F"
+        clip-path="url(#icL)">Yote.</text>
+      <text x="100" y="168" text-anchor="middle"
+        font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif"
+        font-size="38" font-weight="700" fill="#FFB300"
+        clip-path="url(#icR)">Yote.</text>
+    </g>
+  </svg>
+</div>
 
 <!-- トップ画面 -->
 <div class="screen active" id="screen-top">
