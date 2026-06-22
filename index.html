@@ -876,6 +876,7 @@ function renderCalDetail(dateStr){
 function buildHourOpts(sel){
   let h='<option value="" disabled selected>時</option>';
   for(let i=0;i<24;i++)h+=`<option value="${String(i).padStart(2,'0')}">${i}時</option>`;
+  h+=`<option value="24">24時</option>`;
   sel.innerHTML=h;
 }
 function buildMinOpts(sel){
@@ -990,6 +991,13 @@ document.getElementById('edit-tgl-timeslot').addEventListener('click',e=>{
   document.querySelectorAll('#edit-tgl-timeslot .tgl-plain').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');state.editData.timeSlot=t.dataset.val;
   document.getElementById('edit-time-specific').style.display=t.dataset.val==='specific'?'flex':'none';
+  if(t.dataset.val==='specific'&&!state.editData.startTime){
+    const nearH=getNearHour().h;
+    document.getElementById('edit-sel-start-h').value=nearH;
+    document.getElementById('edit-sel-start-m').value='00';
+    document.getElementById('edit-sel-end-h').value=nearH;
+    document.getElementById('edit-sel-end-m').value='00';
+  }
 });
 document.getElementById('edit-tgl-who').addEventListener('click',e=>{
   const t=e.target.closest('.tgl');if(!t)return;
